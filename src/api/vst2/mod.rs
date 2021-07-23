@@ -102,6 +102,7 @@ struct VST2Adapter<P: Plugin> {
     // when the VST2 host asks us for the chunk/data/state, the lifetime for that data extends
     // until the *next* time that the host asks us for state. this means we have to just hold this
     // around in memory indefinitely.
+    #[allow(dead_code)]
     state: Option<Vec<u8>>,
 
     // output events buffer
