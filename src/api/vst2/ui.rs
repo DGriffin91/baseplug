@@ -2,6 +2,7 @@ use std::os::raw::c_void;
 
 use raw_window_handle::{RawWindowHandle, HasRawWindowHandle};
 
+use keyboard_types::{KeyboardEvent, Key};
 
 use super::*;
 
@@ -57,6 +58,8 @@ pub(super) trait VST2UI {
     fn ui_get_rect(&self) -> Option<(i16, i16)>;
     fn ui_open(&mut self, parent: *mut c_void) -> WindowOpenResult<()>;
     fn ui_close(&mut self);
+    fn ui_key_down(&mut self, ev: KeyboardEvent) -> bool;
+    fn ui_key_up(&mut self, ev: KeyboardEvent) -> bool;
 }
 
 impl<P: Plugin> VST2UI for VST2Adapter<P> {
@@ -73,6 +76,9 @@ impl<P: Plugin> VST2UI for VST2Adapter<P> {
     }
 
     default fn ui_close(&mut self) { }
+
+    default fn ui_key_down(&mut self, _ev: KeyboardEvent) -> bool { false }
+    default fn ui_key_up(&mut self, _ev: KeyboardEvent) -> bool { false }
 }
 
 impl<P: PluginUI> VST2UI for VST2Adapter<P> {
@@ -97,7 +103,23 @@ impl<P: PluginUI> VST2UI for VST2Adapter<P> {
 
     fn ui_close(&mut self) {
         if let Some(handle) = self.wrapped.ui_handle.take() {
-            P::ui_close(handle)
+            P::ui_close(handle, &self.wrapped.plugin_context)
+        }
+    }
+
+    fn ui_key_down(&mut self, ev: KeyboardEvent) -> bool {
+        if let Some(handle) = self.wrapped.ui_handle.take() {
+            P::ui_key_down(handle, &self.wrapped.plugin_context, ev)
+        } else {
+            false
+        }
+    }
+
+    fn ui_key_up(&mut self, ev: KeyboardEvent) -> bool {
+        if let Some(handle) = self.wrapped.ui_handle.take() {
+            P::ui_key_up(handle, &self.wrapped.plugin_context, ev)
+        } else {
+            false
         }
     }
 }

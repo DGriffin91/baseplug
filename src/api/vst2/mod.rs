@@ -26,6 +26,71 @@ const TRANSPORT_PLAYING: i32 = 2;
 // output events buffer size
 const OUTPUT_BUFFER_SIZE: usize = 256;
 
+fn value2keycode(code: isize) -> Option<keyboard_types::Code> {
+    use keyboard_types::Code;
+
+    match code {
+        1  => Some(Code::NumpadBackspace),
+        2  => Some(Code::Tab),
+        3  => Some(Code::NumpadClear),
+        4  => Some(Code::Enter),
+        5  => Some(Code::Pause),
+        6  => Some(Code::Escape),
+        7  => Some(Code::Space),
+        8  => Some(Code::MediaTrackNext),
+        9  => Some(Code::End),
+        10 => Some(Code::Home),
+        11 => Some(Code::ArrowLeft),
+        12 => Some(Code::ArrowUp),
+        13 => Some(Code::ArrowRight),
+        14 => Some(Code::ArrowDown),
+        15 => Some(Code::PageUp),
+        16 => Some(Code::PageDown),
+        17 => Some(Code::Select),
+        18 => Some(Code::PrintScreen),
+        19 => Some(Code::Enter),
+        // 20 Some(Code::Snapshot),
+        21 => Some(Code::Insert),
+        22 => Some(Code::Delete),
+        23 => Some(Code::Help),
+        24 => Some(Code::Numpad0),
+        25 => Some(Code::Numpad1),
+        26 => Some(Code::Numpad2),
+        27 => Some(Code::Numpad3),
+        28 => Some(Code::Numpad4),
+        29 => Some(Code::Numpad5),
+        30 => Some(Code::Numpad6),
+        31 => Some(Code::Numpad7),
+        32 => Some(Code::Numpad8),
+        33 => Some(Code::Numpad9),
+        34 => Some(Code::NumpadMultiply),
+        35 => Some(Code::NumpadAdd),
+        // 36 Some(Separator),
+        37 => Some(Code::NumpadSubtract),
+        38 => Some(Code::NumpadDecimal),
+        39 => Some(Code::NumpadDivide),
+        40 => Some(Code::F1),
+        41 => Some(Code::F2),
+        42 => Some(Code::F3),
+        43 => Some(Code::F4),
+        44 => Some(Code::F5),
+        45 => Some(Code::F6),
+        46 => Some(Code::F7),
+        47 => Some(Code::F8),
+        48 => Some(Code::F9),
+        49 => Some(Code::F10),
+        50 => Some(Code::F11),
+        51 => Some(Code::F12),
+        52 => Some(Code::NumLock),
+        53 => Some(Code::ScrollLock),
+        54 => Some(Code::ShiftLeft),
+        55 => Some(Code::ControlLeft),
+        56 => Some(Code::AltLeft),
+        57 => Some(Code::Equal),
+        _ => None,
+    }
+}
+
 #[inline]
 fn cstr_as_slice<'a>(ptr: *mut c_void, len: usize) -> &'a mut [u8] {
     unsafe {
@@ -278,6 +343,66 @@ impl<P: Plugin> VST2Adapter<P> {
 
             effect_opcodes::EDIT_CLOSE => {
                 self.ui_close();
+            },
+
+            effect_opcodes::EDIT_KEY_DOWN => {
+                use keyboard_types::{
+                    KeyboardEvent, Key, KeyState, Code,
+                    Location, Modifiers
+                };
+
+                let mut modifiers = Modifiers::empty();
+
+                if opt.to_bits() & 0x1 > 0 { modifiers.insert(Modifiers::SHIFT); }
+                if opt.to_bits() & 0x2 > 0 { modifiers.insert(Modifiers::ALT); }
+                // 0x4 is presumably a weird key named "COMMAND" which
+                // only exists on keyboards connected to too expensive computers.
+                if opt.to_bits() & 0x4 > 0 { modifiers.insert(Modifiers::CONTROL); }
+                if opt.to_bits() & 0x8 > 0 { modifiers.insert(Modifiers::CONTROL); }
+
+                if self.ui_key_down(KeyboardEvent {
+                    state: KeyState::Down,
+                    key: Key::Character((index as u8 as char).to_string()),
+                    code: value2keycode(value).unwrap_or(Code::Unidentified),
+                    modifiers,
+                    location: Location::Standard,
+                    repeat: false,
+                    is_composing: false,
+                }) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            },
+
+            effect_opcodes::EDIT_KEY_UP => {
+                use keyboard_types::{
+                    KeyboardEvent, Key, KeyState, Code,
+                    Location, Modifiers
+                };
+
+                let mut modifiers = Modifiers::empty();
+
+                if opt.to_bits() & 0x1 > 0 { modifiers.insert(Modifiers::SHIFT); }
+                if opt.to_bits() & 0x2 > 0 { modifiers.insert(Modifiers::ALT); }
+                // 0x4 is presumably a weird key named "COMMAND" which
+                // only exists on keyboards connected to too expensive computers.
+                if opt.to_bits() & 0x4 > 0 { modifiers.insert(Modifiers::CONTROL); }
+                if opt.to_bits() & 0x8 > 0 { modifiers.insert(Modifiers::CONTROL); }
+
+                if self.ui_key_down(KeyboardEvent {
+                    state: KeyState::Up,
+                    key: Key::Character((index as u8 as char).to_string()),
+                    code: value2keycode(value).unwrap_or(Code::Unidentified),
+                    modifiers,
+                    location: Location::Standard,
+                    repeat: false,
+                    is_composing: false,
+                }) {
+                    return 1;
+                } else {
+                    return 0;
+                }
             },
 
             effect_opcodes::CAN_DO => {
