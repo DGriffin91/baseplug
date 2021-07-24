@@ -2,7 +2,7 @@ use std::os::raw::c_void;
 
 use raw_window_handle::{RawWindowHandle, HasRawWindowHandle};
 
-use keyboard_types::{KeyboardEvent, Key};
+use keyboard_types::KeyboardEvent;
 
 use super::*;
 
@@ -108,18 +108,10 @@ impl<P: PluginUI> VST2UI for VST2Adapter<P> {
     }
 
     fn ui_key_down(&mut self, ev: KeyboardEvent) -> bool {
-        if let Some(handle) = self.wrapped.ui_handle.take() {
-            P::ui_key_down(handle, &self.wrapped.plugin_context, ev)
-        } else {
-            false
-        }
+        P::ui_key_down(&self.wrapped.plugin_context, ev)
     }
 
     fn ui_key_up(&mut self, ev: KeyboardEvent) -> bool {
-        if let Some(handle) = self.wrapped.ui_handle.take() {
-            P::ui_key_up(handle, &self.wrapped.plugin_context, ev)
-        } else {
-            false
-        }
+        P::ui_key_up(&self.wrapped.plugin_context, ev)
     }
 }

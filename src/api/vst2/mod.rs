@@ -26,6 +26,69 @@ const TRANSPORT_PLAYING: i32 = 2;
 // output events buffer size
 const OUTPUT_BUFFER_SIZE: usize = 256;
 
+fn map_keycode2key(code: keyboard_types::Code) -> keyboard_types::Key {
+    use keyboard_types::{Code, Key};
+
+    match code {
+        Code::NumpadBackspace => Key::Backspace,
+        Code::Tab             => Key::Tab,
+        Code::NumpadClear     => Key::Clear,
+        Code::Enter           => Key::Enter,
+        Code::Pause           => Key::Pause,
+        Code::Escape          => Key::Escape,
+        Code::Space           => Key::Character(" ".to_string()),
+        Code::MediaTrackNext  => Key::MediaTrackNext,
+        Code::End             => Key::End,
+        Code::Home            => Key::Home,
+        Code::ArrowLeft       => Key::ArrowLeft,
+        Code::ArrowUp         => Key::ArrowUp,
+        Code::ArrowRight      => Key::ArrowRight,
+        Code::ArrowDown       => Key::ArrowDown,
+        Code::PageUp          => Key::PageUp,
+        Code::PageDown        => Key::PageDown,
+        Code::Select          => Key::Select,
+        Code::PrintScreen     => Key::PrintScreen,
+        Code::Enter           => Key::Enter,
+        Code::Insert          => Key::Insert,
+        Code::Delete          => Key::Delete,
+        Code::Help            => Key::Help,
+        Code::Numpad0         => Key::Character("0".to_string()),
+        Code::Numpad1         => Key::Character("1".to_string()),
+        Code::Numpad2         => Key::Character("2".to_string()),
+        Code::Numpad3         => Key::Character("3".to_string()),
+        Code::Numpad4         => Key::Character("4".to_string()),
+        Code::Numpad5         => Key::Character("5".to_string()),
+        Code::Numpad6         => Key::Character("6".to_string()),
+        Code::Numpad7         => Key::Character("7".to_string()),
+        Code::Numpad8         => Key::Character("8".to_string()),
+        Code::Numpad9         => Key::Character("9".to_string()),
+        Code::NumpadMultiply  => Key::Character("*".to_string()),
+        Code::NumpadAdd       => Key::Character("+".to_string()),
+        Code::NumpadSubtract  => Key::Character("-".to_string()),
+        Code::NumpadDecimal   => Key::Character(".".to_string()),
+        Code::NumpadDivide    => Key::Character("/".to_string()),
+        Code::F1              => Key::F1,
+        Code::F2              => Key::F2,
+        Code::F3              => Key::F3,
+        Code::F4              => Key::F4,
+        Code::F5              => Key::F5,
+        Code::F6              => Key::F6,
+        Code::F7              => Key::F7,
+        Code::F8              => Key::F8,
+        Code::F9              => Key::F9,
+        Code::F10             => Key::F10,
+        Code::F11             => Key::F11,
+        Code::F12             => Key::F12,
+        Code::NumLock         => Key::NumLock,
+        Code::ScrollLock      => Key::ScrollLock,
+        Code::ShiftLeft       => Key::Shift,
+        Code::ControlLeft     => Key::Control,
+        Code::AltLeft         => Key::Alt,
+        Code::Equal           => Key::Character("=".to_string()),
+        _                     => Key::Unidentified,
+    }
+}
+
 fn value2keycode(code: isize) -> Option<keyboard_types::Code> {
     use keyboard_types::Code;
 
@@ -360,11 +423,20 @@ impl<P: Plugin> VST2Adapter<P> {
                 if opt.to_bits() & 0x4 > 0 { modifiers.insert(Modifiers::CONTROL); }
                 if opt.to_bits() & 0x8 > 0 { modifiers.insert(Modifiers::CONTROL); }
 
+                let code = value2keycode(value).unwrap_or(Code::Unidentified);
+
+                let key =
+                    if (index as u8) == 0 {
+                        map_keycode2key(code)
+                    } else {
+                        Key::Character((index as u8 as char).to_string())
+                    };
+
                 if self.ui_key_down(KeyboardEvent {
-                    state: KeyState::Down,
-                    key: Key::Character((index as u8 as char).to_string()),
-                    code: value2keycode(value).unwrap_or(Code::Unidentified),
+                    key,
+                    code,
                     modifiers,
+                    state: KeyState::Down,
                     location: Location::Standard,
                     repeat: false,
                     is_composing: false,
@@ -390,11 +462,20 @@ impl<P: Plugin> VST2Adapter<P> {
                 if opt.to_bits() & 0x4 > 0 { modifiers.insert(Modifiers::CONTROL); }
                 if opt.to_bits() & 0x8 > 0 { modifiers.insert(Modifiers::CONTROL); }
 
-                if self.ui_key_down(KeyboardEvent {
-                    state: KeyState::Up,
-                    key: Key::Character((index as u8 as char).to_string()),
-                    code: value2keycode(value).unwrap_or(Code::Unidentified),
+                let code = value2keycode(value).unwrap_or(Code::Unidentified);
+
+                let key =
+                    if (index as u8) == 0 {
+                        map_keycode2key(code)
+                    } else {
+                        Key::Character((index as u8 as char).to_string())
+                    };
+
+                if self.ui_key_up(KeyboardEvent {
+                    key,
+                    code,
                     modifiers,
+                    state: KeyState::Up,
                     location: Location::Standard,
                     repeat: false,
                     is_composing: false,

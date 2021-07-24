@@ -82,8 +82,8 @@ pub trait PluginUI: Plugin {
     fn ui_size() -> (i16, i16);
 
     fn ui_open(parent: &impl HasRawWindowHandle, plug_ctx: &Self::PluginContext) -> WindowOpenResult<Self::Handle>;
-    fn ui_key_down(handle: Self::Handle, plug_ctx: &Self::PluginContext, ev: KeyboardEvent) -> bool;
-    fn ui_key_up(handle: Self::Handle, plug_ctx: &Self::PluginContext, ev: KeyboardEvent) -> bool;
+    fn ui_key_down(plug_ctx: &Self::PluginContext, ev: KeyboardEvent) -> bool;
+    fn ui_key_up(plug_ctx: &Self::PluginContext, ev: KeyboardEvent) -> bool;
     fn ui_close(handle: Self::Handle, plug_ctx: &Self::PluginContext);
 
     fn ui_param_notify(handle: &Self::Handle,
