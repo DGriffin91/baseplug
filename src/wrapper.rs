@@ -1,21 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    Model,
-    SmoothModel,
-
-    Plugin,
-    PluginUI,
-    MidiReceiver,
-    Param,
-
-    AudioBus,
-    AudioBusMut,
-    ProcessContext,
-    MusicalTime,
-
-    Event,
-    event
+    event, AudioBus, AudioBusMut, Event, MidiReceiver, Model, MusicalTime, Param, Plugin,
+    PluginContext, PluginUI, ProcessContext, SmoothModel,
 };
 
 pub trait UIHostCallback: Send + Sync {
@@ -43,20 +30,26 @@ pub(crate) struct WrappedPlugin<P: Plugin> {
     pub(crate) smoothed_model: <P::Model as Model<P>>::Smooth,
     sample_rate: f32,
 
-    pub(crate) ui_handle: Option<<Self as WrappedPluginUI<P>>::UIHandle>
+    pub(crate) ui_handle: Option<<Self as WrappedPluginUI<P>>::UIHandle>,
+
+    pub(crate) plugin_context: P::PluginContext,
 }
 
 impl<P: Plugin> WrappedPlugin<P> {
     #[inline]
     pub(crate) fn new() -> Self {
+        let mut plugin_context = P::PluginContext::new();
+
         Self {
-            plug: P::new(48000.0, &P::Model::default()),
+            plug: P::new(48000.0, &P::Model::default(), &mut plugin_context),
             events: Vec::with_capacity(512),
             output_events: Vec::with_capacity(256),
             smoothed_model: <P::Model as Model<P>>::Smooth::from_model(P::Model::default()),
             sample_rate: 0.0,
 
-            ui_handle: None
+            ui_handle: None,
+
+            plugin_context,
         }
     }
 
@@ -75,7 +68,7 @@ impl<P: Plugin> WrappedPlugin<P> {
     #[inline]
     pub(crate) fn reset(&mut self) {
         let model = self.smoothed_model.as_model();
-        self.plug = P::new(self.sample_rate, &model);
+        self.plug = P::new(self.sample_rate, &model, &mut self.plugin_context);
         self.smoothed_model.reset(&model);
     }
 
@@ -89,21 +82,26 @@ impl<P: Plugin> WrappedPlugin<P> {
     }
 
     #[inline]
-    pub(crate) fn set_parameter(&mut self, param: &'static Param<P, <P::Model as Model<P>>::Smooth>, val: f32) {
+    pub(crate) fn set_parameter(
+        &mut self,
+        param: &'static Param<P, <P::Model as Model<P>>::Smooth>,
+        val: f32,
+    ) {
         if param.dsp_notify.is_some() {
             self.enqueue_event(Event {
                 frame: 0,
-                data: event::Data::Parameter {
-                    param,
-                    val,
-                }
+                data: event::Data::Parameter { param, val },
             });
         } else {
             param.set(&mut self.smoothed_model, val);
         }
     }
 
-    fn set_parameter_from_event(&mut self, param: &Param<P, <P::Model as Model<P>>::Smooth>, val: f32) {
+    fn set_parameter_from_event(
+        &mut self,
+        param: &Param<P, <P::Model as Model<P>>::Smooth>,
+        val: f32,
+    ) {
         param.set(&mut self.smoothed_model, val);
 
         if let Some(dsp_notify) = param.dsp_notify {
@@ -115,26 +113,29 @@ impl<P: Plugin> WrappedPlugin<P> {
     // state
     ////
 
-    pub(crate) fn serialise(&self) -> Option<Vec<u8>>
-    {
+    pub(crate) fn serialise(&self) -> Option<Vec<u8>> {
         let ser = self.smoothed_model.as_model();
 
-        serde_json::to_string(&ser)
-            .map(|s| s.into_bytes())
-            .ok()
+        serde_json::to_string(&ser).map(|s| s.into_bytes()).ok()
     }
 
     pub(crate) fn deserialise<'de>(&mut self, data: &'de [u8]) {
         let m: P::Model = match serde_json::from_slice(data) {
             Ok(m) => m,
-            Err(_) => return
+            Err(_) => return,
         };
 
         self.smoothed_model.set(&m);
     }
 
-    pub(crate) fn as_ui_model(&self, ui_host_callback: Arc<dyn UIHostCallback>) -> <P::Model as Model<P>>::UI {
-        <<P::Model as Model<P>>::Smooth as SmoothModel<P, P::Model>>::as_ui_model(&self.smoothed_model, ui_host_callback)
+    pub(crate) fn as_ui_model(
+        &self,
+        ui_host_callback: Arc<dyn UIHostCallback>,
+    ) -> <P::Model as Model<P>>::UI {
+        <<P::Model as Model<P>>::Smooth as SmoothModel<P, P::Model>>::as_ui_model(
+            &self.smoothed_model,
+            ui_host_callback,
+        )
     }
 
     ////
@@ -144,7 +145,7 @@ impl<P: Plugin> WrappedPlugin<P> {
     fn enqueue_event_in(ev: Event<P>, buffer: &mut Vec<Event<P>>) {
         let latest_frame = match buffer.last() {
             Some(ev) => ev.frame,
-            None => 0
+            None => 0,
         };
 
         if latest_frame <= ev.frame {
@@ -152,9 +153,7 @@ impl<P: Plugin> WrappedPlugin<P> {
             return;
         }
 
-        let idx = buffer.iter()
-            .position(|e| e.frame > ev.frame)
-            .unwrap();
+        let idx = buffer.iter().position(|e| e.frame > ev.frame).unwrap();
 
         buffer.insert(idx, ev);
     }
@@ -183,11 +182,14 @@ impl<P: Plugin> WrappedPlugin<P> {
     }
 
     #[inline]
-    pub(crate) fn process(&mut self, mut musical_time: MusicalTime,
-        input: [&[f32]; 2], mut output: [&mut [f32]; 2],
+    pub(crate) fn process(
+        &mut self,
+        mut musical_time: MusicalTime,
+        input: [&[f32]; 2],
+        mut output: [&mut [f32]; 2],
         mut nframes: usize,
-        poll_from_ui: bool)
-    {
+        poll_from_ui: bool,
+    ) {
         let mut start = 0;
         let mut ev_idx = 0;
 
@@ -208,10 +210,7 @@ impl<P: Plugin> WrappedPlugin<P> {
 
             let in_bus = AudioBus {
                 connected_channels: 2,
-                buffers: &[
-                    &input[0][start..end],
-                    &input[1][start..end]
-                ]
+                buffers: &[&input[0][start..end], &input[1][start..end]],
             };
 
             let out_bus = AudioBusMut {
@@ -221,11 +220,8 @@ impl<P: Plugin> WrappedPlugin<P> {
 
                     // "cannot borrow output as mutable more than once"
                     // fuck you borrowck
-                    &mut [
-                        &mut split.0[0][start..end],
-                        &mut split.1[0][start..end]
-                    ]
-                }
+                    &mut [&mut split.0[0][start..end], &mut split.1[0][start..end]]
+                },
             };
 
             // this scope is here so that we drop ProcessContext right after we're done with it.
@@ -246,11 +242,14 @@ impl<P: Plugin> WrappedPlugin<P> {
                         Self::enqueue_event_in(ev, output_events);
                     },
 
-                    musical_time: &musical_time
+                    musical_time: &musical_time,
                 };
 
-                let proc_model = self.smoothed_model.process(block_frames, &mut self.plug, poll_from_ui);
-                self.plug.process(&proc_model, &mut context);
+                let proc_model =
+                    self.smoothed_model
+                        .process(block_frames, &mut self.plug, poll_from_ui);
+                self.plug
+                    .process(&proc_model, &mut context, &mut self.plugin_context);
             }
 
             nframes -= block_frames;
@@ -280,11 +279,11 @@ impl<T: Plugin> WrappedPluginMidiInput for WrappedPlugin<T> {
     }
 
     default fn midi_input(&mut self, _frame: usize, _data: [u8; 3]) {
-        return
+        return;
     }
 
     default fn dispatch_midi_event(&mut self, _data: [u8; 3]) {
-        return
+        return;
     }
 }
 
@@ -296,7 +295,7 @@ impl<T: MidiReceiver> WrappedPluginMidiInput for WrappedPlugin<T> {
     fn midi_input(&mut self, frame: usize, data: [u8; 3]) {
         self.enqueue_event(Event {
             frame,
-            data: event::Data::Midi(data)
+            data: event::Data::Midi(data),
         })
     }
 

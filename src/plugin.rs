@@ -1,25 +1,22 @@
-use serde::{
-    Serialize,
-    de::DeserializeOwned
-};
+use serde::{de::DeserializeOwned, Serialize};
 
 use raw_window_handle::HasRawWindowHandle;
 
+use keyboard_types::KeyboardEvent;
 
-use crate::parameter::*;
 use crate::event::*;
 use crate::model::*;
+use crate::parameter::*;
 use crate::time::*;
-
 
 pub struct AudioBus<'a> {
     pub connected_channels: isize,
-    pub buffers: &'a[&'a [f32]]
+    pub buffers: &'a [&'a [f32]],
 }
 
 pub struct AudioBusMut<'a, 'b> {
     pub connected_channels: isize,
-    pub buffers: &'a mut [&'b mut [f32]]
+    pub buffers: &'a mut [&'b mut [f32]],
 }
 
 pub struct ProcessContext<'a, 'b, P: Plugin> {
@@ -31,7 +28,7 @@ pub struct ProcessContext<'a, 'b, P: Plugin> {
 
     pub enqueue_event: &'a mut dyn FnMut(Event<P>),
 
-    pub musical_time: &'a MusicalTime
+    pub musical_time: &'a MusicalTime,
 }
 
 pub trait Parameters<P: Plugin, Model: 'static> {
@@ -44,6 +41,10 @@ macro_rules! proc_model {
     }
 }
 
+pub trait PluginContext<P: Plugin>: Send + Sync + 'static {
+    fn new() -> Self;
+}
+
 pub trait Plugin: Sized + Send + Sync + 'static {
     const NAME: &'static str;
     const PRODUCT: &'static str;
@@ -54,16 +55,20 @@ pub trait Plugin: Sized + Send + Sync + 'static {
 
     type Model: Model<Self> + Serialize + DeserializeOwned;
 
-    fn new(sample_rate: f32, model: &Self::Model) -> Self;
+    type PluginContext: PluginContext<Self> + Send + Sync;
 
-    fn process<'proc>(&mut self,
+    fn new(sample_rate: f32, model: &Self::Model, plug_ctx: &Self::PluginContext) -> Self;
+
+    fn process<'proc>(
+        &mut self,
         model: &proc_model!(Self, 'proc),
-        ctx: &'proc mut ProcessContext<Self>);
+        ctx: &'proc mut ProcessContext<Self>,
+        plug_ctx: &Self::PluginContext,
+    );
 }
 
 pub trait MidiReceiver: Plugin {
-    fn midi_input<'proc>(&mut self, model: &proc_model!(Self, 'proc),
-        data: [u8; 3]);
+    fn midi_input<'proc>(&mut self, model: &proc_model!(Self, 'proc), data: [u8; 3]);
 }
 
 pub type WindowOpenResult<T> = Result<T, ()>;
@@ -73,6 +78,18 @@ pub trait PluginUI: Plugin {
 
     fn ui_size() -> (i16, i16);
 
-    fn ui_open(parent: &impl HasRawWindowHandle, model: <Self::Model as Model<Self>>::UI) -> WindowOpenResult<Self::Handle>;
-    fn ui_close(handle: Self::Handle);
+    fn ui_open(
+        parent: &impl HasRawWindowHandle,
+        plug_ctx: &Self::PluginContext,
+        model: <Self::Model as Model<Self>>::UI,
+    ) -> WindowOpenResult<Self::Handle>;
+    fn ui_key_down(plug_ctx: &Self::PluginContext, ev: KeyboardEvent) -> bool;
+    fn ui_key_up(plug_ctx: &Self::PluginContext, ev: KeyboardEvent) -> bool;
+    fn ui_close(handle: Self::Handle, plug_ctx: &Self::PluginContext);
+
+    fn ui_param_notify(
+        handle: &Self::Handle,
+        param: &'static Param<Self, <Self::Model as Model<Self>>::Smooth>,
+        val: f32,
+    );
 }

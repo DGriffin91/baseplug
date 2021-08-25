@@ -1,9 +1,9 @@
 use std::ffi::CStr;
 use std::os::raw::c_void;
 use std::ptr;
+use std::sync::Arc;
 use std::{io, os::raw::c_char};
 use std::{mem, slice};
-use std::sync::Arc;
 
 pub use vst2_sys;
 use vst2_sys::*;
@@ -27,11 +27,137 @@ const TRANSPORT_PLAYING: i32 = 2;
 // output events buffer size
 const OUTPUT_BUFFER_SIZE: usize = 256;
 
+fn map_keycode2key(code: keyboard_types::Code) -> keyboard_types::Key {
+    use keyboard_types::{Code, Key};
+
+    match code {
+        Code::NumpadBackspace => Key::Backspace,
+        Code::Tab => Key::Tab,
+        Code::NumpadClear => Key::Clear,
+        Code::Enter => Key::Enter,
+        Code::Pause => Key::Pause,
+        Code::Escape => Key::Escape,
+        Code::Space => Key::Character(" ".to_string()),
+        Code::MediaTrackNext => Key::MediaTrackNext,
+        Code::End => Key::End,
+        Code::Home => Key::Home,
+        Code::ArrowLeft => Key::ArrowLeft,
+        Code::ArrowUp => Key::ArrowUp,
+        Code::ArrowRight => Key::ArrowRight,
+        Code::ArrowDown => Key::ArrowDown,
+        Code::PageUp => Key::PageUp,
+        Code::PageDown => Key::PageDown,
+        Code::Select => Key::Select,
+        Code::PrintScreen => Key::PrintScreen,
+        Code::Enter => Key::Enter,
+        Code::Insert => Key::Insert,
+        Code::Delete => Key::Delete,
+        Code::Help => Key::Help,
+        Code::Numpad0 => Key::Character("0".to_string()),
+        Code::Numpad1 => Key::Character("1".to_string()),
+        Code::Numpad2 => Key::Character("2".to_string()),
+        Code::Numpad3 => Key::Character("3".to_string()),
+        Code::Numpad4 => Key::Character("4".to_string()),
+        Code::Numpad5 => Key::Character("5".to_string()),
+        Code::Numpad6 => Key::Character("6".to_string()),
+        Code::Numpad7 => Key::Character("7".to_string()),
+        Code::Numpad8 => Key::Character("8".to_string()),
+        Code::Numpad9 => Key::Character("9".to_string()),
+        Code::NumpadMultiply => Key::Character("*".to_string()),
+        Code::NumpadAdd => Key::Character("+".to_string()),
+        Code::NumpadSubtract => Key::Character("-".to_string()),
+        Code::NumpadDecimal => Key::Character(".".to_string()),
+        Code::NumpadDivide => Key::Character("/".to_string()),
+        Code::F1 => Key::F1,
+        Code::F2 => Key::F2,
+        Code::F3 => Key::F3,
+        Code::F4 => Key::F4,
+        Code::F5 => Key::F5,
+        Code::F6 => Key::F6,
+        Code::F7 => Key::F7,
+        Code::F8 => Key::F8,
+        Code::F9 => Key::F9,
+        Code::F10 => Key::F10,
+        Code::F11 => Key::F11,
+        Code::F12 => Key::F12,
+        Code::NumLock => Key::NumLock,
+        Code::ScrollLock => Key::ScrollLock,
+        Code::ShiftLeft => Key::Shift,
+        Code::ControlLeft => Key::Control,
+        Code::AltLeft => Key::Alt,
+        Code::Equal => Key::Character("=".to_string()),
+        _ => Key::Unidentified,
+    }
+}
+
+fn value2keycode(code: isize) -> Option<keyboard_types::Code> {
+    use keyboard_types::Code;
+
+    match code {
+        1 => Some(Code::NumpadBackspace),
+        2 => Some(Code::Tab),
+        3 => Some(Code::NumpadClear),
+        4 => Some(Code::Enter),
+        5 => Some(Code::Pause),
+        6 => Some(Code::Escape),
+        7 => Some(Code::Space),
+        8 => Some(Code::MediaTrackNext),
+        9 => Some(Code::End),
+        10 => Some(Code::Home),
+        11 => Some(Code::ArrowLeft),
+        12 => Some(Code::ArrowUp),
+        13 => Some(Code::ArrowRight),
+        14 => Some(Code::ArrowDown),
+        15 => Some(Code::PageUp),
+        16 => Some(Code::PageDown),
+        17 => Some(Code::Select),
+        18 => Some(Code::PrintScreen),
+        19 => Some(Code::Enter),
+        // 20 Some(Code::Snapshot),
+        21 => Some(Code::Insert),
+        22 => Some(Code::Delete),
+        23 => Some(Code::Help),
+        24 => Some(Code::Numpad0),
+        25 => Some(Code::Numpad1),
+        26 => Some(Code::Numpad2),
+        27 => Some(Code::Numpad3),
+        28 => Some(Code::Numpad4),
+        29 => Some(Code::Numpad5),
+        30 => Some(Code::Numpad6),
+        31 => Some(Code::Numpad7),
+        32 => Some(Code::Numpad8),
+        33 => Some(Code::Numpad9),
+        34 => Some(Code::NumpadMultiply),
+        35 => Some(Code::NumpadAdd),
+        // 36 Some(Separator),
+        37 => Some(Code::NumpadSubtract),
+        38 => Some(Code::NumpadDecimal),
+        39 => Some(Code::NumpadDivide),
+        40 => Some(Code::F1),
+        41 => Some(Code::F2),
+        42 => Some(Code::F3),
+        43 => Some(Code::F4),
+        44 => Some(Code::F5),
+        45 => Some(Code::F6),
+        46 => Some(Code::F7),
+        47 => Some(Code::F8),
+        48 => Some(Code::F9),
+        49 => Some(Code::F10),
+        50 => Some(Code::F11),
+        51 => Some(Code::F12),
+        52 => Some(Code::NumLock),
+        53 => Some(Code::ScrollLock),
+        54 => Some(Code::ShiftLeft),
+        55 => Some(Code::ControlLeft),
+        56 => Some(Code::AltLeft),
+        57 => Some(Code::Equal),
+        _ => None,
+    }
+}
+
 #[inline]
 fn cstr_as_slice<'a>(ptr: *mut c_void, len: usize) -> &'a mut [u8] {
-    unsafe {
-        slice::from_raw_parts_mut(ptr as *mut u8, len)
-    }
+    unsafe { slice::from_raw_parts_mut(ptr as *mut u8, len) }
 }
 
 fn cstrcpy(ptr: *mut c_void, src: &str, max_len: usize) {
@@ -45,9 +171,9 @@ fn cstrcpy(ptr: *mut c_void, src: &str, max_len: usize) {
 
 #[inline]
 fn param_for_vst2_id<P, M>(id: i32) -> Option<&'static Param<P, M::Smooth>>
-    where
-        P: Plugin,
-        M: Model<P>,
+where
+    P: Plugin,
+    M: Model<P>,
 {
     M::Smooth::PARAMS.get(id as usize).copied()
 }
@@ -58,7 +184,7 @@ macro_rules! param_for_idx {
             Some(p) => p,
             None => return 0,
         }
-    }
+    };
 }
 
 // represents an output buffer to send events to host
@@ -115,16 +241,21 @@ struct VST2Adapter<P: Plugin> {
 
 impl<P: Plugin> VST2Adapter<P> {
     #[inline]
-    fn dispatch(&mut self, opcode: i32, index: i32, value: isize, ptr: *mut c_void, opt: f32) -> isize {
+    fn dispatch(
+        &mut self,
+        opcode: i32,
+        index: i32,
+        value: isize,
+        ptr: *mut c_void,
+        opt: f32,
+    ) -> isize {
         match opcode {
             ////
             // lifecycle
             ////
             effect_opcodes::CLOSE => {
-                unsafe {
-                    drop(Box::from_raw(self))
-                };
-            },
+                unsafe { drop(Box::from_raw(self)) };
+            }
 
             effect_opcodes::SET_SAMPLE_RATE => self.wrapped.set_sample_rate(opt),
 
@@ -132,7 +263,7 @@ impl<P: Plugin> VST2Adapter<P> {
                 if value == 1 {
                     self.wrapped.reset();
                 }
-            },
+            }
 
             ////
             // parameters
@@ -141,33 +272,32 @@ impl<P: Plugin> VST2Adapter<P> {
                 let param = param_for_idx!(index);
                 cstrcpy(ptr, param.get_name(), MAX_PARAM_STR_LEN);
                 return 0;
-            },
+            }
 
             effect_opcodes::GET_PARAM_LABEL => {
                 let param = param_for_idx!(index);
                 cstrcpy(ptr, param.get_label(), MAX_PARAM_STR_LEN);
                 return 0;
-            },
+            }
 
             effect_opcodes::GET_PARAM_DISPLAY => {
                 let param = param_for_idx!(index);
                 let dest = cstr_as_slice(ptr, MAX_PARAM_STR_LEN);
-                let mut cursor = io::Cursor::new(
-                    &mut dest[..MAX_PARAM_STR_LEN - 1]);
+                let mut cursor = io::Cursor::new(&mut dest[..MAX_PARAM_STR_LEN - 1]);
 
                 match param.get_display(&self.wrapped.smoothed_model, &mut cursor) {
                     Ok(_) => {
                         let len = cursor.position();
                         dest[len as usize] = 0;
                         return len as isize;
-                    },
+                    }
 
                     Err(_) => {
                         dest[0] = 0;
                         return 0;
                     }
                 }
-            },
+            }
 
             effect_opcodes::CAN_BE_AUTOMATED => return 1,
 
@@ -177,17 +307,17 @@ impl<P: Plugin> VST2Adapter<P> {
             effect_opcodes::GET_EFFECT_NAME => {
                 cstrcpy(ptr, P::NAME, MAX_EFFECT_NAME_LEN);
                 return 1;
-            },
+            }
 
             effect_opcodes::GET_PRODUCT_STRING => {
                 cstrcpy(ptr, P::PRODUCT, MAX_PRODUCT_STR_LEN);
                 return 1;
-            },
+            }
 
             effect_opcodes::GET_VENDOR_STRING => {
                 cstrcpy(ptr, P::VENDOR, MAX_VENDOR_STR_LEN);
                 return 1;
-            },
+            }
 
             ////
             // events
@@ -196,7 +326,7 @@ impl<P: Plugin> VST2Adapter<P> {
                 let vst_events = &*(ptr as *const Events);
                 let ev_slice = slice::from_raw_parts(
                     vst_events.events.as_ptr() as *const *const MidiEvent,
-                    vst_events.num_events as usize
+                    vst_events.num_events as usize,
                 );
 
                 for ev in ev_slice {
@@ -204,7 +334,7 @@ impl<P: Plugin> VST2Adapter<P> {
                         let ev = *ev as *const MidiEvent;
                         self.wrapped.midi_input(
                             (*ev).delta_frames as usize,
-                            [(*ev).midi_data[0], (*ev).midi_data[1], (*ev).midi_data[2]]
+                            [(*ev).midi_data[0], (*ev).midi_data[1], (*ev).midi_data[2]],
                         );
                     }
                 }
@@ -218,27 +348,24 @@ impl<P: Plugin> VST2Adapter<P> {
             effect_opcodes::GET_CHUNK => {
                 let new_state = match self.wrapped.serialise() {
                     None => return 0,
-                    Some(s) => s
+                    Some(s) => s,
                 };
 
                 unsafe {
-                    *(ptr as *mut *const c_void) =
-                        new_state.as_ptr() as *const c_void;
+                    *(ptr as *mut *const c_void) = new_state.as_ptr() as *const c_void;
                 }
 
                 let len = new_state.len() as isize;
                 self.state = Some(new_state);
                 return len;
-            },
+            }
 
             effect_opcodes::SET_CHUNK => {
-                let state = unsafe {
-                    slice::from_raw_parts(ptr as *mut u8, value as usize)
-                };
+                let state = unsafe { slice::from_raw_parts(ptr as *mut u8, value as usize) };
 
                 self.wrapped.deserialise(state);
                 return 0;
-            },
+            }
 
             ////
             // editor
@@ -251,7 +378,7 @@ impl<P: Plugin> VST2Adapter<P> {
                     None => unsafe {
                         *ptr = ptr::null_mut();
                         return 0;
-                    }
+                    },
                 };
 
                 self.editor_rect = Rect {
@@ -266,11 +393,11 @@ impl<P: Plugin> VST2Adapter<P> {
                     *ptr = (&self.editor_rect as *const _) as *mut c_void;
                     return 1;
                 }
-            },
+            }
 
             effect_opcodes::EDIT_OPEN => {
                 let ui_host_callback = VST2UIHostCallback {
-                    host_cb: Arc::clone(&self.host_callback)
+                    host_cb: Arc::clone(&self.host_callback),
                 };
 
                 let ui_shared_model = self.wrapped.as_ui_model(Arc::new(ui_host_callback));
@@ -279,13 +406,99 @@ impl<P: Plugin> VST2Adapter<P> {
                     Ok(_) => 1,
                     Err(_) => 0,
                 };
-            },
+            }
 
-            effect_opcodes::EDIT_IDLE => {},
+            effect_opcodes::EDIT_IDLE => {}
 
             effect_opcodes::EDIT_CLOSE => {
                 self.ui_close();
-            },
+            }
+
+            effect_opcodes::EDIT_KEY_DOWN => {
+                use keyboard_types::{Code, Key, KeyState, KeyboardEvent, Location, Modifiers};
+
+                let mut modifiers = Modifiers::empty();
+
+                if opt.to_bits() & 0x1 > 0 {
+                    modifiers.insert(Modifiers::SHIFT);
+                }
+                if opt.to_bits() & 0x2 > 0 {
+                    modifiers.insert(Modifiers::ALT);
+                }
+                // 0x4 is presumably a weird key named "COMMAND" which
+                // only exists on keyboards connected to too expensive computers.
+                if opt.to_bits() & 0x4 > 0 {
+                    modifiers.insert(Modifiers::CONTROL);
+                }
+                if opt.to_bits() & 0x8 > 0 {
+                    modifiers.insert(Modifiers::CONTROL);
+                }
+
+                let code = value2keycode(value).unwrap_or(Code::Unidentified);
+
+                let key = if (index as u8) == 0 {
+                    map_keycode2key(code)
+                } else {
+                    Key::Character((index as u8 as char).to_string())
+                };
+
+                if self.ui_key_down(KeyboardEvent {
+                    key,
+                    code,
+                    modifiers,
+                    state: KeyState::Down,
+                    location: Location::Standard,
+                    repeat: false,
+                    is_composing: false,
+                }) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }
+
+            effect_opcodes::EDIT_KEY_UP => {
+                use keyboard_types::{Code, Key, KeyState, KeyboardEvent, Location, Modifiers};
+
+                let mut modifiers = Modifiers::empty();
+
+                if opt.to_bits() & 0x1 > 0 {
+                    modifiers.insert(Modifiers::SHIFT);
+                }
+                if opt.to_bits() & 0x2 > 0 {
+                    modifiers.insert(Modifiers::ALT);
+                }
+                // 0x4 is presumably a weird key named "COMMAND" which
+                // only exists on keyboards connected to too expensive computers.
+                if opt.to_bits() & 0x4 > 0 {
+                    modifiers.insert(Modifiers::CONTROL);
+                }
+                if opt.to_bits() & 0x8 > 0 {
+                    modifiers.insert(Modifiers::CONTROL);
+                }
+
+                let code = value2keycode(value).unwrap_or(Code::Unidentified);
+
+                let key = if (index as u8) == 0 {
+                    map_keycode2key(code)
+                } else {
+                    Key::Character((index as u8 as char).to_string())
+                };
+
+                if self.ui_key_up(KeyboardEvent {
+                    key,
+                    code,
+                    modifiers,
+                    state: KeyState::Up,
+                    location: Location::Standard,
+                    repeat: false,
+                    is_composing: false,
+                }) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }
 
             effect_opcodes::CAN_DO => {
                 // get the property
@@ -302,15 +515,14 @@ impl<P: Plugin> VST2Adapter<P> {
                 };
 
                 return can_do;
-            },
+            }
 
             ////
             // ~who knows~
             ////
-
             o => {
                 eprintln!("unhandled opcode {:?}", o);
-            },
+            }
         }
 
         0
@@ -320,7 +532,7 @@ impl<P: Plugin> VST2Adapter<P> {
     fn get_parameter(&self, index: i32) -> f32 {
         let param = match param_for_vst2_id::<P, P::Model>(index) {
             Some(p) => p,
-            None => return 0.0
+            None => return 0.0,
         };
 
         self.wrapped.get_parameter(param)
@@ -330,7 +542,7 @@ impl<P: Plugin> VST2Adapter<P> {
     fn set_parameter(&mut self, index: i32, val: f32) {
         let param = match param_for_vst2_id::<P, P::Model>(index) {
             Some(p) => p,
-            None => return
+            None => return,
         };
 
         self.wrapped.set_parameter(param, val);
@@ -340,7 +552,7 @@ impl<P: Plugin> VST2Adapter<P> {
         let mut mtime = MusicalTime {
             bpm: 0.0,
             beat: 0.0,
-            is_playing: false
+            is_playing: false,
         };
 
         let time_info = {
@@ -351,12 +563,12 @@ impl<P: Plugin> VST2Adapter<P> {
                 0,
                 flags as isize,
                 ptr::null_mut(),
-                0.0
+                0.0,
             );
 
             match vti {
                 0 => return mtime,
-                ptr => unsafe { &*(ptr as *const TimeInfo) }
+                ptr => unsafe { &*(ptr as *const TimeInfo) },
             }
         };
 
@@ -376,27 +588,33 @@ impl<P: Plugin> VST2Adapter<P> {
     }
 
     #[inline]
-    fn process_replacing(&mut self,
+    fn process_replacing(
+        &mut self,
         in_buffers: *const *const f32,
         out_buffers: *mut *mut f32,
-        nframes: i32)
-    {
+        nframes: i32,
+    ) {
         let input = unsafe {
             let b = slice::from_raw_parts(in_buffers, 2);
 
-            [slice::from_raw_parts(b[0], nframes as usize),
-             slice::from_raw_parts(b[1], nframes as usize)]
+            [
+                slice::from_raw_parts(b[0], nframes as usize),
+                slice::from_raw_parts(b[1], nframes as usize),
+            ]
         };
 
         let output = unsafe {
             let b = slice::from_raw_parts(out_buffers, 2);
 
-            [slice::from_raw_parts_mut(b[0], nframes as usize),
-             slice::from_raw_parts_mut(b[1], nframes as usize)]
+            [
+                slice::from_raw_parts_mut(b[0], nframes as usize),
+                slice::from_raw_parts_mut(b[1], nframes as usize),
+            ]
         };
 
         let musical_time = self.get_musical_time();
-        self.wrapped.process(musical_time, input, output, nframes as usize, true);
+        self.wrapped
+            .process(musical_time, input, output, nframes as usize, true);
 
         // write output_events in the buffer
         self.send_output_events();
@@ -457,7 +675,7 @@ impl<P: Plugin> VST2Adapter<P> {
                 0,
                 0,
                 &self.output_events_buffer as *const _ as *mut _,
-                0.0
+                0.0,
             );
         }
     }
@@ -484,10 +702,28 @@ unsafe impl Sync for VST2UIHostCallback {}
 
 impl UIHostCallback for VST2UIHostCallback {
     fn send_parameter_update(&self, param_idx: usize, normalized: f32) {
-        self.host_cb.send(host_opcodes::BEGIN_EDIT, param_idx as i32, 0, ptr::null_mut(), 0.0);
+        self.host_cb.send(
+            host_opcodes::BEGIN_EDIT,
+            param_idx as i32,
+            0,
+            ptr::null_mut(),
+            0.0,
+        );
 
-        self.host_cb.send(host_opcodes::AUTOMATE, param_idx as i32, 0, ptr::null_mut(), normalized);
+        self.host_cb.send(
+            host_opcodes::AUTOMATE,
+            param_idx as i32,
+            0,
+            ptr::null_mut(),
+            normalized,
+        );
 
-        self.host_cb.send(host_opcodes::END_EDIT, param_idx as i32, 0, ptr::null_mut(), 0.0);
+        self.host_cb.send(
+            host_opcodes::END_EDIT,
+            param_idx as i32,
+            0,
+            ptr::null_mut(),
+            0.0,
+        );
     }
 }

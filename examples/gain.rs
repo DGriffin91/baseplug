@@ -1,13 +1,9 @@
 #![allow(incomplete_features)]
 #![feature(generic_associated_types)]
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use baseplug::{
-    ProcessContext,
-    Plugin,
-};
-
+use baseplug::{Plugin, PluginContext, ProcessContext};
 
 baseplug::model! {
     #[derive(Debug, Serialize, Deserialize)]
@@ -25,8 +21,19 @@ impl Default for GainModel {
             // "gain" is converted from dB to coefficient in the parameter handling code,
             // so in the model here it's a coeff.
             // -0dB == 1.0
-            gain: 1.0
+            gain: 1.0,
         }
+    }
+}
+
+pub struct GainShared {}
+
+unsafe impl Send for GainShared {}
+unsafe impl Sync for GainShared {}
+
+impl PluginContext<Gain> for GainShared {
+    fn new() -> Self {
+        Self {}
     }
 }
 
@@ -41,14 +48,20 @@ impl Plugin for Gain {
     const OUTPUT_CHANNELS: usize = 2;
 
     type Model = GainModel;
+    type PluginContext = GainShared;
 
     #[inline]
-    fn new(_sample_rate: f32, _model: &GainModel) -> Self {
+    fn new(_sample_rate: f32, _model: &GainModel, _shared: &GainShared) -> Self {
         Self
     }
 
     #[inline]
-    fn process(&mut self, model: &GainModelProcess, ctx: &mut ProcessContext<Self>) {
+    fn process(
+        &mut self,
+        model: &GainModelProcess,
+        ctx: &mut ProcessContext<Self>,
+        _shared: &GainShared,
+    ) {
         let input = &ctx.inputs[0].buffers;
         let output = &mut ctx.outputs[0].buffers;
 

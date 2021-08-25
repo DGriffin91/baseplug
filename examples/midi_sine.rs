@@ -4,15 +4,9 @@
 
 use std::f32::consts::PI;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use baseplug::{
-    ProcessContext,
-    Plugin,
-    MidiReceiver,
-    util::db_to_coeff
-};
-
+use baseplug::{util::db_to_coeff, MidiReceiver, Plugin, PluginContext, ProcessContext};
 
 baseplug::model! {
     #[derive(Debug, Serialize, Deserialize)]
@@ -37,14 +31,25 @@ impl Default for MidiSineModel {
         Self {
             gain: db_to_coeff(-3.0),
             pd: 0.5,
-            a4: 440.0
+            a4: 440.0,
         }
+    }
+}
+
+pub struct MidiSineShared {}
+
+unsafe impl Send for MidiSineShared {}
+unsafe impl Sync for MidiSineShared {}
+
+impl PluginContext<MidiSine> for MidiSineShared {
+    fn new() -> Self {
+        Self {}
     }
 }
 
 struct Oscillator {
     phase: f64,
-    step: f64
+    step: f64,
 }
 
 impl Oscillator {
@@ -54,7 +59,7 @@ impl Oscillator {
             // cheeky little hack to keep cosine output from jumping to +1.0 when adding the plugin
             // to the host ;>
             phase: 0.25,
-            step: 0.0
+            step: 0.0,
         }
     }
 
@@ -103,24 +108,33 @@ impl Plugin for MidiSine {
     const OUTPUT_CHANNELS: usize = 2;
 
     type Model = MidiSineModel;
+    type PluginContext = MidiSineShared;
 
     #[inline]
-    fn new(sample_rate: f32, _model: &MidiSineModel) -> Self {
+    fn new(sample_rate: f32, _model: &MidiSineModel, _shared: &MidiSineShared) -> Self {
         Self {
             osc: Oscillator::new(),
             sample_rate,
 
-            freq_ratio: 0.0
+            freq_ratio: 0.0,
         }
     }
 
     #[inline]
-    fn process(&mut self, model: &MidiSineModelProcess, ctx: &mut ProcessContext<Self>) {
+    fn process(
+        &mut self,
+        model: &MidiSineModelProcess,
+        ctx: &mut ProcessContext<Self>,
+        _shared: &MidiSineShared,
+    ) {
         let output = &mut ctx.outputs[0].buffers;
 
         for i in 0..ctx.nframes {
             if model.a4.is_smoothing() {
-                self.osc.set_frequency((self.freq_ratio * model.a4[i]) as f64, self.sample_rate as f64);
+                self.osc.set_frequency(
+                    (self.freq_ratio * model.a4[i]) as f64,
+                    self.sample_rate as f64,
+                );
             }
 
             let wave = {
@@ -145,9 +159,9 @@ impl MidiReceiver for MidiSine {
 
                 let freq = ratio * model.a4[0];
                 self.osc.set_frequency(freq as f64, self.sample_rate as f64);
-            },
+            }
 
-            _ => ()
+            _ => (),
         }
     }
 }

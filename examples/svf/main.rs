@@ -1,17 +1,13 @@
 #![allow(incomplete_features)]
 #![feature(generic_associated_types)]
 
-use serde::{Serialize, Deserialize};
 use packed_simd::f32x4;
+use serde::{Deserialize, Serialize};
 
 mod svf_simper;
 use svf_simper::SVFSimper;
 
-use baseplug::{
-    Plugin,
-    ProcessContext
-};
-
+use baseplug::{Plugin, PluginContext, ProcessContext};
 
 baseplug::model! {
     #[derive(Debug, Serialize, Deserialize)]
@@ -30,13 +26,24 @@ impl Default for SVFModel {
     fn default() -> Self {
         Self {
             cutoff: 10000.0,
-            resonance: 0.6
+            resonance: 0.6,
         }
     }
 }
 
+pub struct SVFShared {}
+
+unsafe impl Send for SVFShared {}
+unsafe impl Sync for SVFShared {}
+
+impl PluginContext<SVFPlugin> for SVFShared {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
 struct SVFPlugin {
-    lpf: SVFSimper
+    lpf: SVFSimper,
 }
 
 impl Plugin for SVFPlugin {
@@ -48,21 +55,28 @@ impl Plugin for SVFPlugin {
     const OUTPUT_CHANNELS: usize = 2;
 
     type Model = SVFModel;
+    type PluginContext = SVFShared;
 
     #[inline]
-    fn new(sample_rate: f32, model: &SVFModel) -> Self {
+    fn new(sample_rate: f32, model: &SVFModel, _shared: &SVFShared) -> Self {
         Self {
-            lpf: SVFSimper::new(model.cutoff, model.resonance, sample_rate)
+            lpf: SVFSimper::new(model.cutoff, model.resonance, sample_rate),
         }
     }
 
     #[inline]
-    fn process(&mut self, model: &SVFModelProcess, ctx: &mut ProcessContext<Self>) {
+    fn process(
+        &mut self,
+        model: &SVFModelProcess,
+        ctx: &mut ProcessContext<Self>,
+        _shared: &SVFShared,
+    ) {
         let input = &ctx.inputs[0].buffers;
         let output = &mut ctx.outputs[0].buffers;
 
         for i in 0..ctx.nframes {
-            self.lpf.set(model.cutoff[i], model.resonance[i], ctx.sample_rate);
+            self.lpf
+                .set(model.cutoff[i], model.resonance[i], ctx.sample_rate);
 
             let frame = f32x4::new(input[0][i], input[1][i], 0.0, 0.0);
             let lp = self.lpf.process(frame);
