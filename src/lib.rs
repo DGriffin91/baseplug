@@ -14,14 +14,8 @@ pub use atomic_float::AtomicFloat;
 mod smooth;
 pub use smooth::{
     Smooth,
-    SmoothFloatParam,
-    SmoothFloatEntry,
-    UnsmoothedFloatParam,
-    UnsmoothedFloatEntry,
     SmoothOutput,
     SmoothStatus,
-    UIFloatParam,
-    UIFloatEntry,
 };
 
 mod declick;
@@ -32,6 +26,9 @@ pub use declick::{
 
 pub mod event;
 pub use event::Event;
+
+mod message;
+pub use message::*;
 
 mod model;
 pub use model::*;
@@ -45,8 +42,10 @@ pub use plugin::*;
 mod time;
 pub use time::*;
 
+mod ui_param;
+pub use ui_param::{UIFloatParam, UIFloatValue};
+
 mod wrapper;
-pub use wrapper::UIHostCallback;
 
 pub use baseplug_derive::model;
 

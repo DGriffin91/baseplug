@@ -16,6 +16,8 @@ vst2-sys = { git = "https://github.com/WeirdConstructor/vst2-sys.git" }
 keyboard-types = { version = "0.5.0", default-features = false }
 raw-window-handle = "0.3"
 
+ringbuf = "0.2"
+
 [dev-dependencies.packed_simd]
 version = "0.3"
 package = "packed_simd_2"

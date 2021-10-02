@@ -31,8 +31,8 @@ pub struct ProcessContext<'a, 'b, P: Plugin> {
     pub musical_time: &'a MusicalTime,
 }
 
-pub trait Parameters<P: Plugin, Model: 'static> {
-    const PARAMS: &'static [&'static Param<P, Model>];
+pub trait Parameters<P: Plugin, SmoothModel: 'static, UIModel: 'static> {
+    const PARAMS: &'static [&'static Param<P, SmoothModel, UIModel>];
 }
 
 macro_rules! proc_model {
@@ -89,7 +89,11 @@ pub trait PluginUI: Plugin {
 
     fn ui_param_notify(
         handle: &Self::Handle,
-        param: &'static Param<Self, <Self::Model as Model<Self>>::Smooth>,
+        param: &'static Param<
+            Self,
+            <Self::Model as Model<Self>>::Smooth,
+            <Self as PluginUI>::Handle,
+        >,
         val: f32,
     );
 }
